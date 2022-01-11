@@ -6,7 +6,7 @@ taking logic.
 """
 import os
 import sys
-import imp
+import importlib.machinery
 import logging
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter
@@ -146,8 +146,8 @@ def upgrade(upgrade_script, upgrade_callable, conf, buildout_dir):
     else:
         logger.info("Database latest upgrade version : %s", db_version)
 
-    upgrade_module = imp.load_source('anybox.recipe.odoo.upgrade_odoo',
-                                     upgrade_script)
+    upgrade_module = importlib.machinery.SourceFileLoader(
+        'anybox.recipe.odoo.upgrade_odoo', upgrade_script).load_module()
     statuscode = getattr(upgrade_module, upgrade_callable)(session, logger)
     if statuscode is None or statuscode == 0:
         if pkg_version is not None:

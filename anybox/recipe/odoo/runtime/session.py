@@ -169,6 +169,13 @@ class Session(object):
             db = ''  # expected value expected by Odoo to start defaulting.
 
         cnx = odoo.sql_db.db_connect(db)
+
+        if db:
+            try:
+                odoo.service.db._create_empty_database(db)
+            except odoo.service.db.DatabaseExists:
+                pass
+
         cr = cnx.cursor()
         self.is_initialization = not(odoo.modules.db.is_initialized(cr))
         cr.close()
@@ -192,6 +199,13 @@ class Session(object):
             # Form Odoo 11.0: no get method available
             self._registry = Registry(db)
         config['without_demo'] = saved_without_demo
+
+        if db and self.is_initialization and version_info[0] >= 10:
+            # odoo will not fill the database without instruction
+            config['db_name'] = db
+            config['init']['base'] = True
+            odoo.service.server.start(preload=[db], stop=True)
+
         self.init_cursor()
         self.uid = SUPERUSER_ID
         self.init_environments()

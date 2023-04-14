@@ -127,7 +127,7 @@ def upgrade(upgrade_script, upgrade_callable, conf, buildout_dir):
 
     pkg_version = session.package_version
     if pkg_version is None:
-        logger.warn("Expected package version file %r does not exist. "
+        logger.warning("Expected package version file %r does not exist. "
                     "version won't be set in database at the end of upgrade. "
                     "Consider including such a version file in your project "
                     "*before* version dependent logic is actually needed.",
@@ -139,7 +139,7 @@ def upgrade(upgrade_script, upgrade_callable, conf, buildout_dir):
     db_version = session.db_version
     if db_version is None:
         if not session.is_initialization:
-            logger.warn("No version currently set in database (the present "
+            logger.warning("No version currently set in database (the present "
                         "upgrade script has never been run). Consider setting "
                         "database version even for fresh instances, to "
                         "eliminate any guesswork in the upgrade scripts.")

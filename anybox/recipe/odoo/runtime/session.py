@@ -264,7 +264,7 @@ class Session(object):
             except StopIteration:
                 pass
             else:
-                logger.warn("clean_environments: we had the context manager, but "
+                logger.warning("clean_environments: we had the context manager, but "
                             "it had not been called. This suggest low-leve "
                             "tampering with it that should be more cautious. "
                             "Proceeding with cleansing.")

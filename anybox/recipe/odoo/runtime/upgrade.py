@@ -6,8 +6,8 @@ taking logic.
 """
 import os
 import sys
-import importlib.machinery
 import logging
+from importlib.util import spec_from_file_location, module_from_spec
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter
 from argparse import SUPPRESS
@@ -146,8 +146,10 @@ def upgrade(upgrade_script, upgrade_callable, conf, buildout_dir):
     else:
         logger.info("Database latest upgrade version : %s", db_version)
 
-    upgrade_module = importlib.machinery.SourceFileLoader(
-        'anybox.recipe.odoo.upgrade_odoo', upgrade_script).load_module()
+    spec = spec_from_file_location(
+        'anybox.recipe.odoo.upgrade_odoo', upgrade_script)
+    upgrade_module = module_from_spec(spec)
+    spec.loader.exec_module(upgrade_module)
     statuscode = getattr(upgrade_module, upgrade_callable)(session, logger)
     if statuscode is None or statuscode == 0:
         if pkg_version is not None:

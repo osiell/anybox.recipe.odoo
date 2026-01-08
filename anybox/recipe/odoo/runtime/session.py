@@ -3,8 +3,10 @@ import warnings
 import sys
 import os
 import logging
-from distutils.version import Version
 from optparse import OptionParser  # we support python >= 2.6
+
+if sys.version_info[0] < 3:
+    from ..utils import next
 
 try:
     import openerp as odoo
@@ -15,18 +17,28 @@ except ImportError:
         warnings.warn("This must be imported with a buildout odoo recipe "
                       "driven sys.path", RuntimeWarning)
 try:
-    startup = odoo.cli.server
-except AttributeError:
-    from .backports.cli import server as startup
-config = odoo.tools.config
-SUPERUSER_ID = odoo.SUPERUSER_ID
-parse_version = odoo.tools.parse_version
-version_info = odoo.release.version_info
-try:
-    # Odoo 10.0: This is deprecated, use :class:`Registry` instead.
-    Registry = odoo.modules.registry.RegistryManager
-except AttributeError:
-    # Odoo 11.0: class has been removed
+    config = odoo.tools.config
+    SUPERUSER_ID = odoo.SUPERUSER_ID
+    parse_version = odoo.tools.parse_version
+    version_info = odoo.release.version_info
+    odoo_service_db = odoo.service.db
+    odoo_service_server = odoo.service.server
+    try:
+        startup = odoo.cli.server
+    except AttributeError:
+        from .backports.cli import server as startup
+    try:
+        # Odoo 10.0: This is deprecated, use :class:`Registry` instead.
+        Registry = odoo.modules.registry.RegistryManager
+    except AttributeError:
+        # Odoo 11.0: class has been removed
+        Registry = odoo.modules.registry.Registry
+except AttributeError:  # Odoo 19 : odoo no more contains __init__.py
+    from odoo.tools import config, parse_version
+    from odoo.release import version_info
+    from odoo.api import SUPERUSER_ID
+    from odoo.service import db as odoo_service_db, server as odoo_service_server
+    import odoo.cli.server as startup
     Registry = odoo.modules.registry.Registry
 
 logger = logging.getLogger(__name__)
@@ -36,17 +48,17 @@ DEFAULT_VERSION_PARAMETER = 'buildout.db_version'
 DEFAULT_VERSION_FILE = 'VERSION.txt'
 
 
-if sys.version_info < (3,):
-    from ..utils import next
-
-
-class OdooVersion(Version):
+class OdooVersion():
     """Odoo idea of version, wrapped in a class.
 
     This is based on :meth:`odoo.tools.parse_version`, and
     Provides straight-ahead comparison with tuples of integers, or
     distutils Version classes.
     """
+
+    def __init__(self, vstring=None):
+        if vstring:
+            self.parse(vstring)
 
     def parse(self, incoming):
         if isinstance(incoming, OdooVersion):
@@ -138,6 +150,22 @@ class Session(object):
     def ready(self):
         return self._registry is not None
 
+    def _set_with_demo(self, with_demo):
+        saved_with_demo_key = 'with_demo'
+        try:
+            saved_with_demo_val = config[saved_with_demo_key]
+        except KeyError:
+            saved_with_demo_key = 'without_demo'
+            saved_with_demo_val = config[saved_with_demo_key]
+        if with_demo is None:
+            with_demo = (saved_with_demo_key == 'without_demo') != saved_with_demo_val
+        config[saved_with_demo_key] = (saved_with_demo_key == 'with_demo') == with_demo
+        self.with_demo = with_demo
+        return {'key': saved_with_demo_key, 'val': saved_with_demo_val}
+
+    def _restore_with_demo(self, saved_with_demo):
+        config[saved_with_demo['key']] = saved_with_demo['val']
+
     def open(self, db=None, with_demo=False):
         """Load the database
 
@@ -172,12 +200,12 @@ class Session(object):
 
         if db:
             try:
-                odoo.service.db._create_empty_database(db)
-            except odoo.service.db.DatabaseExists:
+                odoo_service_db._create_empty_database(db)
+            except odoo_service_db.DatabaseExists:
                 pass
 
         cr = cnx.cursor()
-        self.is_initialization = not(odoo.modules.db.is_initialized(cr))
+        self.is_initialization = not (odoo.modules.db.is_initialized(cr))
         cr.close()
 
         startup.check_root_user()
@@ -185,12 +213,7 @@ class Session(object):
             startup.check_postgres_user()
         odoo.netsvc.init_logger()
 
-        saved_without_demo = config['without_demo']
-        if with_demo is None:
-            with_demo = config['without_demo']
-
-        config['without_demo'] = not with_demo
-        self.with_demo = with_demo
+        wd = self._set_with_demo(with_demo)
 
         if version_info[0] <= 10:
             self._registry = Registry.get(
@@ -198,13 +221,13 @@ class Session(object):
         else:
             # Form Odoo 11.0: no get method available
             self._registry = Registry(db)
-        config['without_demo'] = saved_without_demo
+        self._restore_with_demo(wd)
 
         if db and self.is_initialization and version_info[0] >= 10:
             # odoo will not fill the database without instruction
             config['db_name'] = db
             config['init']['base'] = True
-            odoo.service.server.start(preload=[db], stop=True)
+            odoo_service_server.start(preload=[db], stop=True)
 
         self.init_cursor()
         self.uid = SUPERUSER_ID
@@ -265,9 +288,9 @@ class Session(object):
                 pass
             else:
                 logger.warning("clean_environments: we had the context manager, but "
-                            "it had not been called. This suggest low-leve "
-                            "tampering with it that should be more cautious. "
-                            "Proceeding with cleansing.")
+                               "it had not been called. This suggest low-leve "
+                               "tampering with it that should be more cautious. "
+                               "Proceeding with cleansing.")
                 try:
                     next(gen_context)
                 except StopIteration:
@@ -481,17 +504,19 @@ class Session(object):
 
         if self.cr is not None:
             self.close()
-        saved_without_demo = config['without_demo']
 
         # with update_modules_list=False, an explicitely named DB would not
         # have gone through open() yet.
-        config['without_demo'] = not getattr(self, 'with_demo', open_with_demo)
+        wd = self._set_with_demo(getattr(self, 'with_demo', open_with_demo))
         for module in modules:
             config['init'][module] = 1
-        self._registry = Registry.new(
-            db, update_module=True, force_demo=self.with_demo)
+        if version_info[0] < 19:
+            kwargs = {'force_demo':  self.with_demo}
+        else:
+            kwargs = {'new_db_demo':  self.with_demo}
+        self._registry = Registry.new(db, update_module=True, **kwargs)
         config['init'].clear()
-        config['without_demo'] = saved_without_demo
+        self._restore_with_demo(wd)
         self.init_cursor()
         self.clean_environments()
 

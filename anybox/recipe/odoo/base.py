@@ -7,8 +7,25 @@ import tarfile
 import setuptools
 import logging
 import stat
-import imp
 import shutil
+try:
+    import imp
+
+    def load_module_file(file_path, name):
+        mod = None
+        with open(file_path, 'rb') as f:
+            mod = imp.load_module(name, f, os.path.split(file_path)[-1],
+                              ('.py', 'r', imp.PY_SOURCE))
+        return mod
+
+except ImportError:  # Python 3.12
+    import importlib.util
+
+    def load_module_file(file_path, name):
+        spec = importlib.util.spec_from_file_location(name, file_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
 try:
     from ConfigParser import ConfigParser, RawConfigParser  # Python 2
 except ImportError:
@@ -680,9 +697,7 @@ class BaseRecipe(object):
         in an old OpenERP version. Could become the norm, but setup is also
         used to list dependencies.
         """
-        with open(join(self.odoo_dir, 'bin', 'release.py'), 'rb') as f:
-            mod = imp.load_module('release', f, 'release.py',
-                                  ('.py', 'r', imp.PY_SOURCE))
+        mod = load_module_file(join(self.odoo_dir, 'bin', 'release.py'), 'release')
         self.version_detected = mod.version
 
     def read_odoo_setup(self):
@@ -699,37 +714,37 @@ class BaseRecipe(object):
         setuptools.setup = new_setup
         distutils.core.setup = new_setup
         sys.path.insert(0, '.')
-        with open(join(self.odoo_dir, 'setup.py'), 'rb') as f:
-            saved_argv = sys.argv
-            sys.argv = ['setup.py', 'develop']
-            try:
-                imp.load_module('setup', f, 'setup.py',
-                                ('.py', 'r', imp.PY_SOURCE))
-            except SystemExit as exception:
-                if 'dsextras' in unicode(exception):
+        # with open(join(self.odoo_dir, 'setup.py'), 'rb') as f:
+        saved_argv = sys.argv
+        sys.argv = ['setup.py', 'develop']
+        try:
+            load_module_file(join(self.odoo_dir, 'setup.py'), 'setup')
+        except SystemExit as exception:
+            if 'dsextras' in unicode(exception):
+                raise EnvironmentError(
+                    'Please first install PyGObject and PyGTK !')
+            else:
+                try:
+                    self.read_release()
+                except Exception as exc:
                     raise EnvironmentError(
-                        'Please first install PyGObject and PyGTK !')
-                else:
-                    try:
-                        self.read_release()
-                    except Exception as exc:
-                        raise EnvironmentError(
-                            'Problem while reading Odoo release.py: %s' % exc)
-            except ImportError as exception:
-                if 'babel' in unicode(exception):
-                    raise EnvironmentError(
-                        'OpenERP setup.py has an unwanted import Babel.\n'
-                        '=> First install Babel on your system or '
-                        'virtualenv :(\n'
-                        '(sudo aptitude install python-babel, '
-                        'or pip install babel)')
-                else:
-                    raise exception
-            except Exception as exception:
-                raise EnvironmentError('Problem while reading Odoo '
-                                       'setup.py: %s' % exception)
-            finally:
-                sys.argv = saved_argv
+                        'Problem while reading Odoo release.py: %s' % exc)
+        except ImportError as exception:
+            if 'babel' in unicode(exception):
+                raise EnvironmentError(
+                    'OpenERP setup.py has an unwanted import Babel.\n'
+                    '=> First install Babel on your system or '
+                    'virtualenv :(\n'
+                    '(sudo aptitude install python-babel, '
+                    'or pip install babel)')
+            else:
+                raise exception
+        except Exception as exception:
+            raise EnvironmentError('Problem while reading Odoo '
+                                   'setup.py: %s' % exception)
+        finally:
+            sys.argv = saved_argv
+        #
         sys.path.pop(0)
         setuptools.setup = old_setup
         distutils.core.setup = old_distutils_setup

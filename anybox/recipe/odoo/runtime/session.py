@@ -10,7 +10,7 @@ if sys.version_info[0] < 3:
 
 try:
     import openerp as odoo
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     try:
         import odoo
     except ImportError:

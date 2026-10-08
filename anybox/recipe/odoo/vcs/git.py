@@ -244,6 +244,9 @@ class GitRepo(BaseRepo):
         if not self.has_commit(sha):
             remote = BUILDOUT_ORIGIN if checkout else self.url
             fetch_cmd = ['git', 'fetch', remote]
+            depth = self.options.get('depth')
+            if depth is not None:
+                fetch_cmd.extend(('--depth', str(depth)))
             if branch is None:
                 logger.info("%s: SHA pinning without remote "
                             "branch indication. "

@@ -41,7 +41,7 @@ except AttributeError:  # Odoo 19 : odoo no more contains __init__.py
     try:
         from odoo.service import db as odoo_service_db, server as odoo_service_server
     except ImportError:
-        # Odoo 20 : db service is in modules
+        # Odoo 20 : db service isin modules
         from odoo.service import server as odoo_service_server
         from odoo.modules import db as odoo_service_db
     Registry = odoo.modules.registry.Registry
@@ -342,8 +342,12 @@ class Session(object):
         db_version = getattr(self, '_db_version', None)
         if db_version is not None:
             return db_version
-        db_version = self.env['ir.config_parameter'].get_param(
-            self._version_parameter_name)
+        if version_info[0] >= 20:
+            db_version = self.env['ir.config_parameter'].get_str(
+                self._version_parameter_name)
+        else:
+            db_version = self.env['ir.config_parameter'].get_param(
+                self._version_parameter_name)
         if not db_version:
             # as usual Odoo thinks its simpler to use False as None
             # restoring sanity ASAP
@@ -355,8 +359,12 @@ class Session(object):
 
     @db_version.setter
     def db_version(self, version):
-        self.env['ir.config_parameter'].set_param(
-            self._version_parameter_name, str(version))
+        if version_info[0] >= 20:
+            self.env['ir.config_parameter'].set_str(
+                self._version_parameter_name, str(version))
+        else:
+            self.env['ir.config_parameter'].set_param(
+                self._version_parameter_name, str(version))
         self._db_version = OdooVersion(version)
 
     @property

@@ -65,6 +65,21 @@ class ServerRecipe(BaseRecipe):
                 zc.buildout.easy_install.py_script_template.replace(
                     zc.buildout.easy_install.script_header, new_header))
 
+    def _fix_initialization(self, initialization):
+        # required from odoo > 20
+        if major_version(self.version_detected)[0] >= 20:
+            print("Forcing PYTHONPATH for running gevent with Odoo " + self.version_detected)
+            return os.linesep.join((
+                initialization,
+                'import os',
+                'paths = sys.path',
+                'existing = os.environ.get("PYTHONPATH")',
+                'if existing:',
+                '    paths.append(existing)',
+                'os.environ["PYTHONPATH"] = os.pathsep.join(paths)',
+                ''))
+        return initialization
+
     def apply_version_dependent_decisions(self):
         """Store some booleans depending on detected version.
 
@@ -476,6 +491,7 @@ conf = odoo.tools.config
             ""))
 
         reqs, ws = self.eggs_reqs, self.eggs_ws
+        initialization = self._fix_initialization(initialization)
         return zc.buildout.easy_install.scripts(
             reqs, ws, sys.executable, self.options['bin-directory'],
             scripts={},
@@ -519,7 +535,7 @@ conf = odoo.tools.config
                 initialization = os.linesep.join((
                     initialization,
                     "session.handle_command_line_options(%r)" % options))
-
+            initialization = self._fix_initialization(initialization)
             zc.buildout.easy_install.scripts(
                 reqs, ws, sys.executable, self.bin_dir,
                 scripts={desc['entry']: script_name},

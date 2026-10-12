@@ -37,8 +37,13 @@ except AttributeError:  # Odoo 19 : odoo no more contains __init__.py
     from odoo.tools import config, parse_version
     from odoo.release import version_info
     from odoo.api import SUPERUSER_ID
-    from odoo.service import db as odoo_service_db, server as odoo_service_server
     import odoo.cli.server as startup
+    try:
+        from odoo.service import db as odoo_service_db, server as odoo_service_server
+    except ImportError:
+        # Odoo 20 : db service is in modules
+        from odoo.service import server as odoo_service_server
+        from odoo.modules import db as odoo_service_db
     Registry = odoo.modules.registry.Registry
 
 logger = logging.getLogger(__name__)
